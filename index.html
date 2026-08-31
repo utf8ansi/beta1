@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>UTAU声库分享库</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+        body {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            min-height: 100vh;
+            padding: 60px 24px;
+        }
+        .page-title {
+            text-align: center;
+            font-size: 32px;
+            font-weight: 700;
+            color: #2d3748;
+            margin-bottom: 48px;
+            letter-spacing: 0.5px;
+        }
+        .container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 40px;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+        .voice-card {
+            background: #ffffff;
+            border-radius: 20px;
+            padding: 24px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.07);
+            transition: all 0.3s ease;
+            cursor: pointer;
+            text-align: center;
+        }
+        .voice-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 16px 32px rgba(0, 0, 0, 0.12);
+        }
+        .voice-card img {
+            width: 140px;
+            height: 140px;
+            object-fit: cover;
+            border-radius: 16px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+        .voice-card h3 {
+            font-size: 20px;
+            color: #1a202c;
+            margin-bottom: 12px;
+        }
+        .voice-card .tip {
+            font-size: 14px;
+            color: #718096;
+        }
+        .page {
+            display: none;
+        }
+        .page.active {
+            display: block;
+        }
+        .back-wrap {
+            max-width: 900px;
+            margin: 0 auto 24px;
+        }
+        .back-btn {
+            padding: 12px 28px;
+            background: #4299e1;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.25s;
+        }
+        .back-btn:hover {
+            background: #3182ce;
+        }
+        .lang-title {
+            text-align: center;
+            font-size: 26px;
+            color: #2d3748;
+            margin-bottom: 36px;
+        }
+        .lang-list {
+            max-width: 900px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .lang-item {
+            background: white;
+            padding: 20px 24px;
+            border-radius: 16px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+            transition: 0.25s;
+        }
+        .lang-item:hover {
+            background: #f7fafc;
+            transform: translateX(4px);
+        }
+        .lang-item a {
+            font-size: 18px;
+            font-weight: 600;
+            color: #3182ce;
+            text-decoration: none;
+        }
+        .download-box {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            padding: 32px;
+            border-radius: 20px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.07);
+            text-align: center;
+        }
+        .download-link {
+            font-size: 20px;
+            font-weight: 700;
+            color: #38a169;
+            text-decoration: none;
+            padding: 16px 32px;
+            background: #f0fff4;
+            border-radius: 12px;
+            display: inline-block;
+            transition: 0.25s;
+        }
+        .download-link:hover {
+            background: #c6f6d5;
+        }
+        .loading-tip {
+            text-align: center;
+            font-size: 18px;
+            color: #666;
+            padding: 40px 0;
+        }
+    </style>
+</head>
+<body>
+    <!-- 首页卡片列表 -->
+    <div class="page active" id="homePage">
+        <h1 class="page-title">UTAU声库分享库</h1>
+        <div class="loading-tip" id="loadingTip">正在加载声库列表...</div>
+        <div class="container" id="cardContainer"></div>
+    </div>
+
+    <!-- 语言选择页面 -->
+    <div class="page" id="langPage">
+        <div class="back-wrap">
+            <button class="back-btn" onclick="goBack()">← 返回</button>
+        </div>
+        <h2 class="lang-title" id="langTitle"></h2>
+        <div class="lang-list" id="langList"></div>
+    </div>
+
+    <!-- 下载跳转页面 -->
+    <div class="page" id="downloadPage">
+        <div class="back-wrap">
+            <button class="back-btn" onclick="goBack()">← 返回</button>
+        </div>
+        <div class="download-box" id="downloadBox"></div>
+    </div>
+
+<script>
+let voiceList = [];
+let currentVoice = null;
+let historyStack = [];
+
+// 解析 link.lab 配置文件
+function parseLab(text) {
+    const obj = { name: "", langs: [] };
+    const lines = text.split(/\r?\n/);
+    let langKeys = [];
+    for(const line of lines){
+        const t = line.trim();
+        if(!t || t.startsWith("#")) continue;
+        const eqIdx = t.indexOf("=");
+        if(eqIdx < 0) continue;
+        const key = t.slice(0, eqIdx).trim();
+        const val = t.slice(eqIdx+1).trim();
+        if(key === "name"){
+            obj.name = val;
+        }else if(key === "Language"){
+            langKeys = val.split(",").map(s=>s.trim());
+        }else if(langKeys.includes(key)){
+            obj.langs.push({name:key, url:val});
+        }
+    }
+    return obj;
+}
+
+// 读取manifest.lab，批量加载全部声库
+async function loadAllVoices(){
+    try{
+        const manifestRes = await fetch("./manifest.lab");
+        const manifestText = await manifestRes.text();
+        const folderNames = manifestText.split(/\r?\n/).map(s=>s.trim()).filter(s=>s);
+        voiceList = [];
+        for(const folder of folderNames){
+            try{
+                const labRes = await fetch(`./${folder}/link.lab`);
+                const labText = await labRes.text();
+                const data = parseLab(labText);
+                data.img = `./${folder}/image.bmp`;
+                voiceList.push(data);
+            }catch(err){
+                console.warn(`读取文件夹【${folder}】失败，已跳过`, err);
+            }
+        }
+    }catch(err){
+        console.error("读取 manifest.lab 出错", err);
+    }
+    document.getElementById("loadingTip").style.display = "none";
+    renderHomeCards();
+}
+
+// 渲染首页全部卡片
+function renderHomeCards(){
+    const container = document.getElementById("cardContainer");
+    container.innerHTML = "";
+    voiceList.forEach(voice=>{
+        const card = document.createElement("div");
+        card.className = "voice-card";
+        card.innerHTML = `
+            <img src="${voice.img}" alt="${voice.name}" loading="lazy">
+            <h3>${voice.name}</h3>
+            <div class="tip">点击选择语言</div>
+        `;
+        card.onclick = ()=>openLangPage(voice);
+        container.appendChild(card);
+    })
+}
+
+// 打开语言选择界面
+function openLangPage(voice){
+    currentVoice = voice;
+    historyStack.push("home");
+    document.getElementById("homePage").classList.remove("active");
+    document.getElementById("langPage").classList.add("active");
+    document.getElementById("langTitle").innerText = voice.name;
+    const langList = document.getElementById("langList");
+    langList.innerHTML = "";
+    voice.langs.forEach(lang=>{
+        const item = document.createElement("div");
+        item.className = "lang-item";
+        item.innerHTML = `<a href="${lang.url}" target="_blank">${lang.name}</a>`;
+        langList.appendChild(item);
+    })
+}
+
+// 下载中转页
+function openDownloadPage(url){
+    historyStack.push("lang");
+    document.getElementById("langPage").classList.remove("active");
+    document.getElementById("downloadPage").classList.add("active");
+    const box = document.getElementById("downloadBox");
+    box.innerHTML = `
+        <h2>点击下方按钮下载</h2>
+        <br>
+        <a href="${url}" target="_blank" class="download-link">开始下载</a>
+    `;
+}
+
+// 返回上一页
+function goBack(){
+    const last = historyStack.pop();
+    if(last === "home"){
+        document.getElementById("langPage").classList.remove("active");
+        document.getElementById("homePage").classList.add("active");
+    }else if(last === "lang"){
+        document.getElementById("downloadPage").classList.remove("active");
+        document.getElementById("langPage").classList.add("active");
+    }
+}
+
+window.addEventListener("load", loadAllVoices);
+</script>
+</body>
+</html>
